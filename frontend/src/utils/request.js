@@ -1,22 +1,23 @@
 import axios from 'axios'
+import { useUserStore } from '../store/authStore'
 import { ElMessage } from 'element-plus'
 
 const request = axios.create({
-  baseURL: 'http://127.0.0.1:8000',
-  timeout: 10000
+  baseURL: 'http://localhost:8000',
+  timeout: 30000
 })
 
 // 请求拦截器
 request.interceptors.request.use(
   config => {
-    const token = localStorage.getItem('token')
+    const store = useUserStore()
+    const token = store.token
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
     return config
   },
   error => {
-    console.error('请求错误:', error)
     return Promise.reject(error)
   }
 )
@@ -24,41 +25,30 @@ request.interceptors.request.use(
 // 响应拦截器
 request.interceptors.response.use(
   response => {
-    console.log('收到响应:', {
-      url: response.config.url,
-      status: response.status,
-      data: response.data,
-      headers: response.headers
-    })
-    return response
+    // 处理成功响应
+    return response.data
   },
   error => {
-    console.error('响应错误:', {
-      url: error.config?.url,
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message,
-      detail: error.response?.data?.detail,
-      errors: error.response?.data?.errors
-    })
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('username')
-      window.location.href = '/login'
-    } else {
+    // 处理错误响应
+    if (error.response) {
       switch (error.response.status) {
-        case 403:
-          ElMessage.error('没有权限')
+        case 401:
+          const store = useUserStore()
+          store.logout()
+          router.push('/login')
+          ElMessage.error('登录已过期，请重新登录')
           break
-        case 404:
-          ElMessage.error('请求的资源不存在')
+        case 403:
+          ElMessage.error('没有权限访问')
           break
         case 500:
           ElMessage.error('服务器错误')
           break
         default:
-          ElMessage.error(error.response.data.detail || '未知错误')
+          ElMessage.error(error.response.data.message || '请求失败')
       }
+    } else {
+      ElMessage.error('网络错误，请稍后重试')
     }
     return Promise.reject(error)
   }

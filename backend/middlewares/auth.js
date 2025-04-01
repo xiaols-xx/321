@@ -1,39 +1,25 @@
 const jwt = require('jsonwebtoken');
+const config = require('../config');
 
-const auth = (req, res, next) => {
+module.exports = (req, res, next) => {
   try {
-    // 从请求头获取 token
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res.status(401).json({ 
-        success: false, 
-        message: '未提供认证令牌' 
-      });
-    }
-
-    // 验证 token 格式
-    const token = authHeader.split(' ')[1];
+    const token = req.headers.authorization?.split(' ')[1];
+    
     if (!token) {
-      return res.status(401).json({ 
-        success: false, 
-        message: '无效的认证令牌格式' 
+      return res.status(401).json({
+        success: false,
+        message: '未提供认证令牌'
       });
     }
 
-    // 验证 token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // 将用户信息添加到请求对象中
+    const decoded = jwt.verify(token, config.JWT_SECRET);
     req.user = decoded;
-    
     next();
   } catch (error) {
     console.error('认证错误:', error);
-    return res.status(401).json({ 
-      success: false, 
-      message: '无效的认证令牌' 
+    return res.status(401).json({
+      success: false,
+      message: '认证失败'
     });
   }
 };
-
-module.exports = auth;

@@ -4,31 +4,70 @@ const aiService = require('../services/ai');
 const chatService = require('../services/chatService');
 const auth = require('../middlewares/auth');
 
-router.post('/generate', auth, async (req, res) => {
+router.post('/', auth, async (req, res) => {
   try {
     console.log('收到图片生成请求:', req.body);
-    const { description } = req.body;
+    const { prompt, params = {} } = req.body;
     const userId = req.user.id;
 
-    if (!description) {
-      console.log('请求缺少描述');
-      return res.status(400).json({ 
+    if (!prompt) {
+      console.log('请求缺少图片描述');
+      return res.status(400).json({
         success: false,
-        message: '请提供图片描述' 
+        message: '请提供图片描述'
       });
     }
 
     console.log('开始保存用户消息');
-    // 保存用户的问题
-    await chatService.saveMessage(userId, 'user', description);
+    await chatService.saveMessage(userId, 'user', prompt);
     console.log('用户消息已保存');
 
-    console.log('开始生成图片');
-    // 生成图片
-    const imageUrl = await aiService.generateImage(description);
-    console.log('图片生成完成:', imageUrl);
+    console.log('提交异步生成任务');
+    const { taskId, status } = await aiService.generateImageWithFlux(prompt, params);
+    console.log(`任务已提交，ID: ${taskId}, 初始状态: ${status}`);
+
+    console.log('开始轮询任务状态');
+    let attempts = 0;
+    const maxAttempts = 60; // 增加最大轮询次数
+    const pollInterval = 10000; // 增加轮询间隔
     
-    // 保存AI的回复
+    while (attempts < maxAttempts) {
+      const taskResult = await aiService.checkAsyncTask(taskId);
+      console.log(`轮询次数: ${attempts + 1}, API返回:`, taskResult);
+    
+      if (!taskResult) {
+        console.log('API未返回任何数据，等待重试...');
+      } else if (taskResult.task_status && typeof taskResult.task_status !== 'undefined') {
+        const currentStatus = taskResult.task_status;
+        console.log(`轮询次数: ${attempts + 1}, 当前状态: ${currentStatus}`);
+        if (currentStatus === 'SUCCEEDED') break;
+        if (currentStatus === 'FAILED') {
+          console.error('任务失败，原因:', taskResult.message);
+          throw new Error('图片生成失败');
+        }
+      } else {
+        if (taskResult.error) {
+          throw new Error(`图片生成错误: ${taskResult.error}`);
+        }
+        console.log('API response structure invalid: missing output field, response:', taskResult);
+      }
+    
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      attempts++;
+    }
+
+    if (attempts >= maxAttempts) {
+      throw new Error('任务处理超时');
+    }
+
+    const taskResult = await aiService.checkAsyncTask(taskId);
+    if (!taskResult || !taskResult.results || taskResult.results.length === 0) {
+      throw new Error('生成结果无效');
+    }
+
+    const imageUrl = taskResult.results[0].url;
+    console.log('获取到生成结果:', taskResult);
+    console.log('保存AI回复');
     await chatService.saveMessage(userId, 'ai', '已为您生成以下图片：', imageUrl);
     console.log('AI回复已保存');
 
@@ -37,37 +76,33 @@ router.post('/generate', auth, async (req, res) => {
       message: '图片生成成功',
       image_url: imageUrl
     });
+
   } catch (error) {
     console.error('图片生成错误:', {
       message: error.message,
       status: error.response?.status,
-      data: error.response?.data ? '(Binary Data)' : undefined
+      stack: error.stack,
+      apiError: error.response?.data || 'No API response'
     });
-  
-    // 特定错误处理
-    if (error.response?.status === 401) {
-      throw new Error('API认证失败，请检查API Key');
-    }
-    if (error.response?.status === 403) {
-      throw new Error('访问被拒绝，请检查API权限');
-    }
-    if (error.response?.status === 400) {
-      throw new Error('请求参数错误，请检查输入');
-    }
-  
-    // 重试逻辑
-    if (retryCount < this.maxRetries && 
-        (error.code === 'ECONNREFUSED' || 
-         error.code === 'ECONNRESET' || 
-         error.code === 'ETIMEDOUT')) {
-      const waitTime = Math.pow(2, retryCount) * 2000;
-      console.log(`等待${waitTime/1000}秒后重试...(${retryCount + 1}/${this.maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-      return this.generateImage(description, retryCount + 1);
-    }
-  
-    throw error;
+
+    const statusCode = error.response?.status || 500;
+    const errorMessageMap = {
+      400: '请求参数错误，请检查输入',
+      401: 'API认证失败，请检查API Key',
+      403: '访问被拒绝，请检查API权限',
+      429: '请求过于频繁，请稍后再试',
+      500: '图片生成失败'
+    };
+
+    res.status(statusCode).json({
+      success: false,
+      message: errorMessageMap[statusCode] || error.message
+    });
   }
+});
+
+router.get('/', (req, res) => {
+  res.json({ message: "Generate route works!" });
 });
 
 module.exports = router;

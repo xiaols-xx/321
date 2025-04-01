@@ -1,71 +1,33 @@
-import { defineStore } from 'pinia';
-import axios from 'axios';
-import { ElMessage } from 'element-plus';
-import router from '../router';
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+
 export const useUserStore = defineStore('user', {
   state: () => ({
-    token: localStorage.getItem('token') || null,
-    user: JSON.parse(localStorage.getItem('user')) || null
+    user: null,
+    token: null
   }),
-
   getters: {
-    isLoggedIn: (state) => !!state.token,
+    isLoggedIn: (state) => !!state.token
   },
-
   actions: {
-    initialize() {
-      try {
-        const token = localStorage.getItem('token')
-        const userStr = localStorage.getItem('user')
-
-        if (token) {
-          this.setToken(token)
-        }
-
-        if (userStr) {
-          const user = JSON.parse(userStr)
-          this.setUser(user)
-        }
-      } catch (error) {
-        console.error('初始化 store 失败:', error)
-        this.setToken(null)
-        this.setUser(null)
-      }
+    setUser(userData) {
+      this.user = userData
     },
     setToken(token) {
-      this.token = token;
-      localStorage.setItem('token', token);
-      console.log('保存 token:', this.token); // 调试代码
+      this.token = token
     },
-
-    setUser(user) {
-      this.user = user;
-      localStorage.setItem('user', JSON.stringify(user));
-      console.log('保存用户:', this.user); // 调试代码 
+    logout() {
+      this.user = null
+      this.token = null
+      localStorage.removeItem('token')
     },
-
-    async logout() {
-      try {
-        await axios.post('/api/auth/logout',null,{headers: {'Authorization': `Bearer ${this.token}`}})
-         // 清除本地状态
-         this.token = null;
-         this.user = null;
-         localStorage.removeItem('token');
-         localStorage.removeItem('user');
-  // 清除 axios 默认请求头
-  delete axios.defaults.headers.common['Authorization'];
-        ElMessage.success('登出成功')
-      } catch (error) {
-        console.error('登出请求失败:', error);
-        throw error;  
-      } finally {
-        // 确保清除用户状态并重定向到登录页面
-        this.token = null;
-        this.user = null;
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        router.push('/login');
-      }}
+    initialize() {
+      // 初始化时从 localStorage 恢复状态
+      const token = localStorage.getItem('token')
+      if (token) {
+        this.token = token
+      }
+    }
   },
-  
-});
+  persist: true // 启用状态持久化
+})

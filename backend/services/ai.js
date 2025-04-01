@@ -1,188 +1,134 @@
 const axios = require('axios');
-const fs = require('fs').promises;
-const path = require('path');
-const FormData = require('form-data');
 const config = require('../config');
-const https = require('https');
+
 class AIService {
-    constructor() {
-        this.apiUrl = `${config.API.STABILITY.BASE_URL}/${config.API.STABILITY.VERSION}${config.API.STABILITY.ENDPOINT}`;
-        this.apiKey = config.STABILITY_API_KEY;
-        this.outputDir = path.join(__dirname, '../generate-image');
-        this.maxRetries = 3;
-        this.timeout = 120000;
-            // 配置 HTTPS agent
-            this.httpsAgent = new https.Agent({
-              rejectUnauthorized: false, // 注意：仅在测试环境使用
-              keepAlive: true,
-              timeout: 60000
-          });
-        // 确保输出目录存在
-        this.initializeOutputDir();
+  constructor() {
+    // DashScope 接口配置
+    this.apiUrl = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis';
+    this.taskUrl = (taskId) => `https://dashscope.aliyuncs.com/api/v1/tasks/${taskId}`;
+    this.apiKey = config.DASHSCOPE_API_KEY; // 确保config中的字段名正确
+    this.pollInterval = 5000;
+    this.maxPollAttempts = 20;
+    // 定义支持的图片尺寸
+    this.allowedSizes = [
+      '512*1024', '768*512', '768*1024', 
+      '1024*576', '576*1024', '1024*1024'
+    ];
+  }
+
+  async generateImageWithFlux(prompt, params = {}) {
+    // 设置默认值
+    if (!params.size) {
+      params.size = "1024*1024";
     }
 
-    async initializeOutputDir() {
-        try {
-            await fs.access(this.outputDir);
-        } catch (error) {
-            await fs.mkdir(this.outputDir, { recursive: true });
-            console.log('Created output directory:', this.outputDir);
+    this.validateParameters(params); // 添加参数验证
+
+    const response = await axios.post(
+      this.apiUrl,
+      {
+        model: "flux-merged", // 修改为新的模型名称
+        input: { prompt: prompt },
+        parameters: {
+          size: params.size,
+          seed: params.seed ?? Math.floor(Math.random() * 1000),
+          steps: params.steps ?? 30, // flux-merged 模型默认 steps 为 30
+          guidance: params.guidance ?? 3.5,
+          offload: Boolean(params.offload),
+          add_sampling_metadata: Boolean(params.addSamplingMetadata)
         }
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.apiKey}`,
+          'X-DashScope-Async': 'enable',
+          'X-DashScope-ServerTimeout': '300',
+        }
+      }
+    );
+
+    if (!response.data.output?.task_id) {
+      throw new Error(`任务提交失败: ${JSON.stringify(response.data)}`);
     }
 
-    async generateImage(description, retryCount = 0) {
-        if (!this.apiKey) {
-            throw new Error('API Key 未配置');
+    return {
+      taskId: response.data.output.task_id,
+      requestId: response.data.request_id,
+      status: response.data.output.task_status
+    };
+  }
+
+  async checkAsyncTask(taskId) {
+    try {
+      const response = await axios.get(this.taskUrl(taskId), {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
         }
+      });
 
-        try {
-            console.log('开始生成图片，描述:', description);
+      if (response.data.code || response.data.output?.task_status === 'FAILED') {
+        console.error('任务状态失败:', response.data);
+        throw new Error(response.data.code ? response.data.message : '任务失败，状态未知');
+      }
 
-            const formData = new FormData();
-            const params = {
-                prompt: description,
-                output_format: 'png',
-                width: 1024,
-                height: 1024,
-                steps: 30,
-                cfg_scale: 7,
-                samples: 1
-            };
+      return response.data.output;
+    } catch (error) {
+      console.error('检查任务状态时出错:', error);
+      return null;
+    }
+  }
 
-            Object.entries(params).forEach(([key, value]) => {
-                formData.append(key, value);
-            });
+  async pollTaskStatus(taskId) {
+    let attempts = 0;
+    while (attempts < this.maxPollAttempts) {
+      const result = await this.checkAsyncTask(taskId);
 
-            const requestConfig = {
-                method: 'post',
-                url: this.apiUrl,
-                data: formData,
-                headers: {
-                    ...formData.getHeaders(),
-                    'Accept': 'image/*',
-                    'Authorization': `Bearer ${this.apiKey}`,
-                    'Content-Type': 'multipart/form-data'
-                },
-                responseType: 'arraybuffer',
-                timeout: this.timeout,
-                validateStatus: null // 允许所有状态码
-            };
+      if (result) {
+        console.log(`当前轮询状态: ${result.task_status}`);
 
-            const response = await axios(requestConfig);
-
-            // 处理非成功状态码
-            if (response.status !== 200) {
-                let errorMessage = 'API请求失败';
-                if (response.data) {
-                    try {
-                        const textDecoder = new TextDecoder('utf-8');
-                        const errorJson = JSON.parse(textDecoder.decode(response.data));
-                        errorMessage = errorJson.message || JSON.stringify(errorJson);
-                    } catch (e) {
-                        errorMessage = `状态码: ${response.status}`;
-                    }
-                }
-                throw new Error(errorMessage);
-            }
-
-            // 验证响应数据
-            if (!response.data || !Buffer.isBuffer(response.data)) {
-                throw new Error('API返回了无效的响应数据');
-            }
-
-            // 生成文件名和保存图片
-            const timestamp = Date.now();
-            const fileName = `generated_${timestamp}_${Math.random().toString(36).substr(2, 9)}.png`;
-            const filePath = path.join(this.outputDir, fileName);
-
-            await fs.writeFile(filePath, response.data);
-            
-            // 验证保存的文件
-            const stats = await fs.stat(filePath);
-            if (stats.size === 0) {
-                throw new Error('保存的图片文件大小为0');
-            }
-
-            console.log('生成成功:', {
-                path: filePath,
-                size: stats.size,
-                url: `/generated/${fileName}`
-            });
-
-            return `/generated/${fileName}`;
-
-        } catch (error) {
-            console.error('图片生成错误:', {
-                message: error.message,
-                status: error.response?.status,
-                data: error.response?.data ? '(Binary Data)' : undefined
-            });
-
-            // 特定错误处理
-            if (error.response?.status === 401) {
-                throw new Error('API认证失败，请检查API Key');
-            }
-            if (error.response?.status === 403) {
-                throw new Error('访问被拒绝，请检查API权限');
-            }
-            if (error.response?.status === 400) {
-                throw new Error('请求参数错误，请检查输入');
-            }
-
-            // 重试逻辑
-            if (retryCount < this.maxRetries && 
-                (error.code === 'ECONNREFUSED' || 
-                 error.code === 'ECONNRESET' || 
-                 error.code === 'ETIMEDOUT')) {
-                const waitTime = Math.pow(2, retryCount) * 2000;
-                console.log(`等待${waitTime/1000}秒后重试...(${retryCount + 1}/${this.maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, waitTime));
-                return this.generateImage(description, retryCount + 1);
-            }
-
-            throw error;
+        if (result.task_status === 'SUCCEEDED') {
+          return this.handleSuccessResult(result);
         }
+        if (result.task_status === 'FAILED') {
+          throw new Error(`任务失败: ${result.message}`);
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, this.pollInterval));
+      attempts++;
+    }
+    throw new Error('任务超时未完成');
+  }
+
+  handleSuccessResult(result) {
+    if (!result.results || result.results.length === 0) {
+      throw new Error('生成结果为空');
     }
 
-    async testConnection() {
-        try {
-            const formData = new FormData();
-            formData.append('prompt', 'test connection');
-            formData.append('output_format', 'png');
-            formData.append('width', '512');
-            formData.append('height', '512');
-            formData.append('steps', '30');
-            formData.append('samples', '1');
+    const imageUrl = result.results[0].url;
 
-            const response = await axios({
-                method: 'post',
-                url: this.apiUrl,
-                data: formData,
-                headers: {
-                    ...formData.getHeaders(),
-                    'Accept': 'image/*',
-                    'Authorization': `Bearer ${this.apiKey}`
-                },
-                responseType: 'arraybuffer',
-                timeout: 5000,
-                validateStatus: null
-            });
-
-            return {
-                success: response.status === 200,
-                status: response.status,
-                message: response.status === 200 ? '连接测试成功' : '连接测试失败'
-            };
-        } catch (error) {
-            return {
-                success: false,
-                status: error.response?.status || 500,
-                message: `连接测试失败: ${error.message}`
-            };
-        }
+    if (result.metadata) {
+      console.log('生成元数据:', result.metadata);
     }
+
+    return imageUrl;
+  }
+
+  validateParameters(params) {
+    const validSizes = [
+      "512*1024", "768*512", "768*1024",
+      "1024*576", "576*1024", "1024*1024"
+    ];
+
+    if (!validSizes.includes(params.size)) {
+      throw new Error(`无效分辨率: ${params.size}`);
+    }
+
+    if (params.steps < 1 || params.steps > 50) {
+      throw new Error("steps参数需在1-50之间");
+    }
+  }
 }
 
-// 创建单例实例
-const aiService = new AIService();
-module.exports = aiService;
+module.exports = new AIService();

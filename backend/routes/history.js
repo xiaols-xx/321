@@ -20,25 +20,36 @@ const authenticateToken = (req, res, next) => {
         return res.status(403).json({ success: false, message: 'token无效或已过期' });
     }
 };
-
-// 获取聊天历史记录
-router.get('/generate/history', authenticateToken, async (req, res) => {
+// 保存聊天记录
+router.post('/', async (req, res) => {
+    const { type, content, created_at } = req.body;
+    const user_id = req.user.id; // 假设你有用户认证
+  
     try {
-        const userId = req.user.id;
+      await db.execute(
+        'INSERT INTO chat_messages (user_id, type, content, created_at) VALUES (?, ?, ?, ?)',
+        [user_id, type, content, created_at]
+      );
+      res.status(200).json({ message: '历史记录已保存' });
+    } catch (error) {
+      console.error('保存聊天记录失败:', error);
+      res.status(500).json({ message: '保存聊天记录失败' });
+    }
+  });
+// 获取聊天历史记录
+router.get('/', authenticateToken, async (req, res) => {
+    try {
+         const userId = req.user.id;
         console.log('获取历史记录，用户ID:', userId);
 
         // 修改 SQL 查询以匹配实际的表结构
         // 第一个表使用 type，第二个表使用 message_type
-        const [messageRows] = await db.query(
+        const [messageRows] = await db.execute(
             `(SELECT type as message_type, content, image_url, created_at 
               FROM chat_messages 
               WHERE user_id = ?)
-             UNION ALL
-             (SELECT message_type, content, image_url, created_at 
-              FROM chat_history 
-              WHERE user_id = ?)
-             ORDER BY created_at ASC`,
-            [userId, userId]
+             ORDER BY created_at DESC`,
+            [userId]
         );
 
         console.log('查询结果:', {
