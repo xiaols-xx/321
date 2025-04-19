@@ -17,7 +17,7 @@ export const register = (data) => {
   })
 }
 
-// 图片生成相关
+// 图片生成
 export const generateImage = (description) => {
   return request.post('/api/generate', { description }, {
     headers: {

@@ -35,10 +35,7 @@ app.use(bodyParser.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/generate', generateRoutes);
 app.use('/api/history', historyRoutes); // 将 historyRoutes 改为 /api/history
- // 静态文件服务 - 确保这行在路由配置之前
-app.use('/static', express.static(path.join(__dirname, 'generate-image')));
-console.log('静态文件目录:', path.join(__dirname, 'generate-image'));
-// 错误处理
+  // 错误处理
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
   res.status(500).json({ 

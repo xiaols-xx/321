@@ -33,7 +33,7 @@ class ChatService {
     const [result] = await db.execute(
       `INSERT INTO chat_messages 
         (user_id, type, content, image_url, session_id, expires_at)
-       VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+       VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 1 MONTH ))`,
       [userId, type, content, imageUrl, sessionId]
     );
 

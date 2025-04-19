@@ -1,0 +1,8 @@
+::1 - - [09/Apr/2025:15:32:12 +0000] "GET / HTTP/1.1" 404 29 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
+::1 - - [09/Apr/2025:15:32:12 +0000] "GET /favicon.ico HTTP/1.1" 404 29 "http://localhost:8000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
+::1 - - [09/Apr/2025:15:32:14 +0000] "GET / HTTP/1.1" 404 29 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
+::1 - - [09/Apr/2025:15:32:25 +0000] "GET /static/ HTTP/1.1" 404 29 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
+::1 - - [17/Apr/2025:11:43:22 +0000] "POST /history?Content-Type:=application/json&Authorization=Bearer%20eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NSwidXNlcm5hbWUiOiJ4aWFvZmVpeWFuIiwiaWF0IjoxNzQ0ODg1MjQ5LCJleHAiOjE3NDQ5NzE2NDl9.qppf2W8oFleAnoJIEmC9P-bGybPlf6Jg0P3XFy3JXsQ HTTP/1.1" 404 29 "-" "PostmanRuntime/7.43.3"
+::1 - - [17/Apr/2025:15:59:35 +0000] "POST /api/ HTTP/1.1" 404 29 "-" "PostmanRuntime/7.43.3"
+::1 - - [17/Apr/2025:15:59:41 +0000] "POST /api HTTP/1.1" 404 29 "-" "PostmanRuntime/7.43.3"
+::1 - - [17/Apr/2025:15:59:44 +0000] "POST /api HTTP/1.1" 404 29 "-" "PostmanRuntime/7.43.3"

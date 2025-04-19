@@ -21,9 +21,9 @@ const authenticateToken = (req, res, next) => {
     }
 };
 // 保存聊天记录
-router.post('/', async (req, res) => {
+router.post('/',authenticateToken, async (req, res) => {
     const { type, content, created_at } = req.body;
-    const user_id = req.user.id; // 假设你有用户认证
+    const user_id = req.user.id;  
   
     try {
       await db.execute(
@@ -48,7 +48,7 @@ router.get('/', authenticateToken, async (req, res) => {
             `(SELECT type as message_type, content, image_url, created_at 
               FROM chat_messages 
               WHERE user_id = ?)
-             ORDER BY created_at DESC`,
+             ORDER BY created_at ASC`,
             [userId]
         );
 
